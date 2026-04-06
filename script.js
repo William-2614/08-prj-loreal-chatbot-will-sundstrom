@@ -4,8 +4,8 @@ const userInput = document.getElementById("userInput");
 const chatWindow = document.getElementById("chatWindow");
 const sendBtn = document.getElementById("sendBtn");
 
-/* Cloudflare Worker endpoint */
-const WORKER_URL = "https://your-worker-name.your-subdomain.workers.dev";
+/* API settings */
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 /* System prompt for the chatbot */
 const SYSTEM_PROMPT =
@@ -22,18 +22,92 @@ const messages = [
   },
 ];
 
+/* Track simple conversation context */
+const conversationContext = {
+  userName: "",
+  pastQuestions: [],
+};
+
+function extractUserName(text) {
+  const namePatterns = [
+    /my name is\s+([A-Za-z][A-Za-z' -]*)/i,
+    /i am\s+([A-Za-z][A-Za-z' -]*)/i,
+    /i'm\s+([A-Za-z][A-Za-z' -]*)/i,
+  ];
+
+  for (const pattern of namePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+
+  return "";
+}
+
+function updateConversationContext(userText) {
+  const name = extractUserName(userText);
+  if (name) {
+    conversationContext.userName = name;
+  }
+
+  conversationContext.pastQuestions.push(userText);
+  if (conversationContext.pastQuestions.length > 10) {
+    conversationContext.pastQuestions.shift();
+  }
+}
+
+function buildContextMessage() {
+  const contextParts = [];
+
+  if (conversationContext.userName) {
+    contextParts.push(`User name: ${conversationContext.userName}`);
+  }
+
+  if (conversationContext.pastQuestions.length > 0) {
+    contextParts.push(
+      `Past questions: ${conversationContext.pastQuestions.join(" | ")}`,
+    );
+  }
+
+  if (contextParts.length === 0) {
+    return null;
+  }
+
+  return {
+    role: "system",
+    content: `Conversation context: ${contextParts.join(". ")}. Use this information to answer naturally and continue the conversation.`,
+  };
+}
+
 // Helper to render a message in the chat window
 function addMessage(role, text) {
-  const messageElement = document.createElement("p");
-  messageElement.className = `msg ${role}`;
+  const messageRow = document.createElement("div");
+  messageRow.className = `message-row ${role}`;
 
-  const label = role === "user" ? "You" : "L'Oreal Advisor";
-  messageElement.textContent = `${label}: ${text}`;
+  const messageBubble = document.createElement("p");
+  messageBubble.className = `msg-bubble ${role}`;
+  messageBubble.textContent = text;
 
-  chatWindow.appendChild(messageElement);
+  messageRow.appendChild(messageBubble);
+  chatWindow.appendChild(messageRow);
   chatWindow.scrollTop = chatWindow.scrollHeight;
 
-  return messageElement;
+  return messageBubble;
+}
+
+function showLatestQuestion(questionText) {
+  const existingQuestion = chatWindow.querySelector(".latest-question");
+  if (existingQuestion) {
+    existingQuestion.remove();
+  }
+
+  const questionElement = document.createElement("div");
+  questionElement.className = "latest-question";
+  questionElement.textContent = questionText;
+  chatWindow.appendChild(questionElement);
+
+  return questionElement;
 }
 
 addMessage("ai", "Hello! I can help with L'Oréal products and routines.");
@@ -52,48 +126,47 @@ chatForm.addEventListener("submit", async (e) => {
   userInput.disabled = true;
   sendBtn.disabled = true;
 
+  showLatestQuestion(prompt);
+
   // Add the user's message to the conversation history
   messages.push({
     role: "user",
     content: prompt,
   });
 
+  updateConversationContext(prompt);
+
   const typingMessage = addMessage("ai", "Thinking...");
 
   try {
-    if (!WORKER_URL.includes("workers.dev")) {
+    if (typeof OPENAI_API_KEY === "undefined" || !OPENAI_API_KEY) {
       typingMessage.remove();
-      addMessage("ai", "Add your deployed Cloudflare Worker URL in script.js.");
+      addMessage("ai", "Missing API key. Add OPENAI_API_KEY in secrets.js.");
       return;
     }
 
-    const response = await fetch(WORKER_URL, {
+    const requestMessages = [messages[0]];
+    const contextMessage = buildContextMessage();
+
+    if (contextMessage) {
+      requestMessages.push(contextMessage);
+    }
+
+    requestMessages.push(...messages.slice(1));
+
+    const response = await fetch(OPENAI_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        messages: messages,
+        model: "gpt-4o",
+        messages: requestMessages,
       }),
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      typingMessage.remove();
-
-      const apiError = data?.error?.message;
-      if (apiError) {
-        addMessage("ai", `API error: ${apiError}`);
-      } else {
-        addMessage(
-          "ai",
-          "I couldn't get a response right now. Please try again.",
-        );
-      }
-
-      return;
-    }
 
     // Read assistant output using data.choices[0].message.content
     const assistantReply = data?.choices?.[0]?.message?.content;

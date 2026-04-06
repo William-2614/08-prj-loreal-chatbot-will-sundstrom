@@ -76,17 +76,50 @@ body {
 }
 
 /* messages */
-.msg {
+.message-row {
+  display: flex;
   margin-bottom: 14px;
+}
+
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.ai {
+  justify-content: flex-start;
+}
+
+.msg-bubble {
+  max-width: min(78%, 540px);
+  padding: 12px 16px;
+  border-radius: 18px;
   line-height: 1.5;
+  font-size: 16px;
+  box-shadow: 0 6px 14px rgba(17, 17, 17, 0.06);
+  word-break: break-word;
 }
 
-.msg.user {
+.msg-bubble.user {
+  background: var(--loreal-black);
+  color: #ffffff;
+  border-bottom-right-radius: 6px;
+}
+
+.msg-bubble.ai {
+  background: #f3ece1;
+  color: var(--loreal-charcoal);
+  border: 1px solid rgba(214, 198, 170, 0.75);
+  border-bottom-left-radius: 6px;
+}
+
+.latest-question {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--loreal-gold);
+  background: rgba(200, 164, 100, 0.08);
   color: var(--loreal-black);
-}
-
-.msg.ai {
-  color: var(--loreal-muted);
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 /* input row */
